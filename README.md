@@ -5,4 +5,4 @@ If you want to test this out without relying on hosting your own server, you can
 
 I'll work on some new features in the future maybe.
 
-This uses .NET 6.0.
+This uses .NET 6.0 and the binaries are x64.
