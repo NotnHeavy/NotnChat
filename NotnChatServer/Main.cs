@@ -91,7 +91,10 @@ class Program
             client.Close();
             return;
         }
-
+        catch (IOException)
+        {
+            Console.WriteLine($"The connection has been closed from {IP} while authenticating.");
+        }
         while (true)
         {
             try

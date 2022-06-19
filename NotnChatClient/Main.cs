@@ -206,7 +206,7 @@ class Program
             _ = ushort.TryParse(ipAndPort[1], out port);
         }
 
-        // Initiate connection.
+        //// Initiate connection.
         TcpClient client = new();
         try
         {
@@ -224,7 +224,7 @@ class Program
         sslStream = new(stream, false, VerifyCertificate, null);
         try
         {
-            Console.Write($"Specify the name of the target host. If you have not been directed to one, leave this blank.\n>>> ");
+            Console.Write("Specify the subject of the certificate. If you have not been directed to one, leave this blank.\n>>> ");
             string? target = Console.ReadLine();
             if (target == null)
                 return 1;
@@ -245,6 +245,8 @@ class Program
         {
             initialHeight = Console.CursorTop;
             string? input = ReadLineAdjusted();
+            Backspace(inputStream.Length);
+            Console.CursorLeft = 0;
             Console.ForegroundColor = ConsoleColor.Red;
             Console.Write("You: ");
             Console.ForegroundColor = ConsoleColor.Gray;
