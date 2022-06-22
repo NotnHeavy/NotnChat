@@ -10,16 +10,75 @@ namespace NotnChat;
 
 class Program
 {
-    static int initialHeight = 0;
     static SslStream? sslStream = null;
     static bool ping;
     static readonly StringBuilder inputStream = new();
+    static readonly Dictionary<string, Action<string>> commands = new()
+    {
+        { "help", Command_Help },
+        { "status", Command_Status },
+        { "changename", Command_ChangeName }
+    };
+    static string usingIP = "";
+    static string usingPort = "";
+    static string returnValue = "";
 
     const int STD_OUTPUT_HANDLE = -11;
     const int NAME_LENGTH = 32;
     const int MESSAGE_LENGTH = 2000;
     const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 4;
+    const string RED_TEXT = "\x1B[38;5;1m";
+    const string GREEN_TEXT = "\x1B[38;5;2m";
     const string GREY_TEXT = "\x1B[38;5;7m";
+    const string BLUE_TEXT = "\x1B[38;5;75m";
+    const string ORANGE_TEXT = "\x1B[38;5;166m";
+
+    static List<string> ParseStringIntoList(string array)
+    {
+        List<string> list = new();
+        array = array.Trim();
+        string addition = "";
+        int index = 0;
+        while (index < array.Length)
+        {
+            if (array[index] != '\"')
+                return list;
+            ++index;
+            while (index < array.Length && array[index] != '\"')
+            {
+                addition += array[index];
+                ++index;
+            }
+            list.Add(addition);
+            addition = "";
+            ++index;
+            while (index < array.Length && array[index] != '\"')
+                ++index;
+        }
+        return list;
+    }
+
+    static void Command_Help(string args)
+    {
+        Console.WriteLine("List of commands:");
+        foreach (KeyValuePair<string, Action<string>> command in commands)
+            Console.WriteLine($"\\{command.Key}");
+    }
+
+    static void Command_Status(string args)
+    {
+        List<string> connected = ParseStringIntoList(RunCommandOnServer("\\status"));
+        Console.WriteLine($"Connected to server {usingIP}:{usingPort}.\n{connected.Count} connected people.");
+        foreach (string name in connected)
+        {
+            Console.WriteLine(name);
+        }
+    }
+
+    static void Command_ChangeName(string args)
+    {
+        Console.WriteLine($"{RED_TEXT}coming soon!{GREY_TEXT}");
+    }
 
     // Allow for clean certificates and self-signed certificates with an untrusted root.
     static bool VerifyCertificate(object? sender, X509Certificate? certificate, X509Chain? chain, SslPolicyErrors errors)
@@ -68,6 +127,19 @@ class Program
         }
     }
 
+    static string RunCommandOnServer(string? input)
+    {
+        if (input == null || sslStream == null)
+            return "";
+        returnValue = "WAITING";
+        SendToServer(input);
+        while (returnValue == "WAITING")
+        {
+
+        }
+        return returnValue;
+    }
+
     static void SendToServer(string? input)
     {
         if (input == null || sslStream == null)            
@@ -84,14 +156,15 @@ class Program
 
     static string ReadLineAdjusted()
     {
-        inputStream.Clear();
         while (true)
         {
             ConsoleKeyInfo key = Console.ReadKey(true);
             if (key.Key == ConsoleKey.Enter)
             {
                 Console.WriteLine();
-                return inputStream.ToString();
+                string input = inputStream.ToString();
+                inputStream.Clear();
+                return input;
             }
             else if (key.Key == ConsoleKey.Backspace)
             {
@@ -106,7 +179,15 @@ class Program
                 inputStream.Append(key.KeyChar);
                 Console.Write(key.KeyChar);
                 if (Console.CursorLeft == Console.WindowWidth - 1 && inputStream.Length % Console.WindowWidth == 0)
-                    Console.SetCursorPosition(0, Console.CursorTop + 1);
+                {
+                    if (Console.CursorTop == Console.BufferHeight - 1)
+                    {
+                        Console.WriteLine();
+                        Console.SetCursorPosition(0, Console.CursorTop - 1);
+                    }
+                    else
+                        Console.SetCursorPosition(0, Console.CursorTop + 1);
+                }
             }
         }
     }
@@ -139,22 +220,28 @@ class Program
                 string message = Encoding.UTF8.GetString(buffer).Trim('\0');
                 if (message.Length > 0 && message[0] == '$')
                 {
-                    Console.WriteLine($"Your connection has been closed: {message[1..]}");
+                    Console.WriteLine($"{RED_TEXT}Your connection has been closed: {message[1..]}{GREY_TEXT}");
                     Environment.Exit(0);
                     break;
                 }
+                else if (message.Length > 0 && message[0] == '\\')
+                    message = $"{ORANGE_TEXT}Server{GREY_TEXT}: {message[1..]}";
                 else if (buffer[0] == 0)
                 {
                     Finish();
                     return;
                 }
 
-                // THIS CODE IS JANKY AND DOES NOT WORK OUTSIDE WINDOWS
-                WriteLineAdjusted(message);
-                if (ping)
+                if (returnValue == "WAITING")
+                    returnValue = message;
+                else
                 {
-                    Thread thread = new(() => Console.Beep());
-                    thread.Start();
+                    WriteLineAdjusted(message);
+                    if (ping)
+                    {
+                        Thread thread = new(() => Console.Beep());
+                        thread.Start();
+                    }
                 }
             }
             catch (IOException)
@@ -212,6 +299,8 @@ class Program
         {
             IPEndPoint endPoint = new(IPAddress.Parse(ip), port);
             client.Connect(endPoint);
+            usingIP = ip;
+            usingPort = port.ToString();
         }
         catch (Exception)
         {
@@ -240,17 +329,54 @@ class Program
         Thread thread = new(ReadIncoming);
         thread.Start(client);
         SendToServer(name);
-        Console.WriteLine($"Connected to server {ip}:{port}!");
+        if (name.Length > 32)
+            name = name[..32];
+        Console.WriteLine($"{BLUE_TEXT}Connected to server {ip}:{port}!{GREY_TEXT}");
         while (true)
         {
-            initialHeight = Console.CursorTop;
-            string? input = ReadLineAdjusted();
-            Backspace(inputStream.Length);
+            string? input = ReadLineAdjusted().TrimStart();
+            Backspace(input.Length);
             Console.CursorLeft = 0;
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.Write("You: ");
-            Console.ForegroundColor = ConsoleColor.Gray;
-            Console.WriteLine(input);
+
+            // Parse commands.
+            if (input.Length > 0 && input[0] == '\\')
+            {
+                // Check for escape first.
+                if (input.Length > 1 && input[1] == '\\')
+                    input = input[1..];
+                else
+                {
+                    // Parse command and arguments.
+                    string command = "";
+                    int index = 1;
+                    while (index < input.Length && !char.IsWhiteSpace(input[index]))
+                    {
+                        command += input[index];
+                        ++index;
+                    }
+                    while (index < input.Length && char.IsWhiteSpace(input[index]))
+                        ++index;
+                    input = input[index..];
+                    command = command.ToLower();
+
+                    // Match command in dictionary and execute its corresponding code.
+                    Console.WriteLine(new string(' ', Console.BufferWidth));
+                    Console.CursorTop -= 1;
+                    if (commands.ContainsKey(command))
+                    {
+                        Console.WriteLine($"{GREEN_TEXT}Executing command \"{command}\".{GREY_TEXT}");
+                        commands[command](input);
+                    }
+                    else
+                        Console.WriteLine($"{RED_TEXT}The command \"{command}\" does not exist in the commands dictionary.{GREY_TEXT}");
+                    continue;
+                }
+            }
+
+            // Send a message to the server.
+            if (input.Length > MESSAGE_LENGTH)
+                input = input[..MESSAGE_LENGTH];
+            Console.WriteLine($"{RED_TEXT}You ({name}){GREY_TEXT}: {input}");
             SendToServer(input);
         }
     }
