@@ -5,4 +5,7 @@ If you want to test this out without relying on hosting your own server, you can
 
 I'll work on some new features in the future maybe.
 
+## Known bugs
+- The custom WriteLine/ReadLine functions (geared towards allowing user input to be spaced out properly whenever a message is received) don't work properly outside Windows and the overall functionality of the app will freeze unless a character is pressed.
+
 This uses .NET 6.0 and the binaries are x64.
